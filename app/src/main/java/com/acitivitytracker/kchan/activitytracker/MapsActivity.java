@@ -6,6 +6,7 @@ import android.app.PendingIntent;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.location.Location;
 import android.location.LocationListener;
 import android.net.Uri;
@@ -29,14 +30,15 @@ import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.bumptech.glide.Glide;
-import com.bumptech.glide.request.RequestOptions;
 import com.acitivitytracker.kchan.activitytracker.BackgroundService.ActivityBroadcastReceiver;
 import com.acitivitytracker.kchan.activitytracker.BackgroundService.LocationUpdateBroadcastReceiver;
 import com.acitivitytracker.kchan.activitytracker.Fragment.ProfileFragment;
 import com.acitivitytracker.kchan.activitytracker.Singleton.User;
 import com.acitivitytracker.kchan.activitytracker.Utils.Constants;
+import com.acitivitytracker.kchan.activitytracker.ViewModel.LocatedActivity;
 import com.acitivitytracker.kchan.activitytracker.ViewModel.MapsActivityViewModel;
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.request.RequestOptions;
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
@@ -52,13 +54,19 @@ import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.Polyline;
+import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 
-import static com.acitivitytracker.kchan.activitytracker.Utils.Constants.DEFAULT_ZOOM;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Observable;
+import java.util.Observer;
 
 
-public class MapsActivity extends AppCompatActivity implements OnMapReadyCallback, LocationListener, GoogleApiClient.OnConnectionFailedListener, GoogleApiClient.ConnectionCallbacks {
+public class MapsActivity extends AppCompatActivity implements OnMapReadyCallback, LocationListener, GoogleApiClient.OnConnectionFailedListener, GoogleApiClient.ConnectionCallbacks ,Observer{
 
     private static final String TAG = "MapActivity";
     private GoogleMap mMap;
@@ -78,7 +86,12 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
     private LocationRequest mLocationRequest;
     private GoogleApiClient mGoogleApiClient;
     private ActivityRecognitionClient mActivityRecognitionClient;
-
+    private static String currentActivity;
+    private static Double currentLong;
+    private static Double currentLat;
+    private List<LatLng> points=new ArrayList<LatLng>();
+    private LatLng oLocation;
+    private LatLng nLocation;
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
@@ -87,11 +100,13 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
         }
         Toast.makeText(this, "Tap on Map to start", Toast.LENGTH_SHORT).show();
         mMap.setMyLocationEnabled(true);
+        ResultHelper.init(this);
         mapsActivityViewModel.updateLocationUI(mMap);
         getDeviceLocation(mfusedLocationProviderClient, mMap);
         mMap.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
             @Override
             public void onMapClick(LatLng latLng) {
+
                 requestActivityUpdates();
                 requestLocationUpdates();
                 if(isProfileFragmentEnabled) {
@@ -104,6 +119,9 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
         });
         }
 
+    public static void ListeningMethod(){
+
+    }
     public void getDeviceLocation(final FusedLocationProviderClient mfusedLocationProviderClient, final GoogleMap mMap) {
         /*
          * Get the best and most recent location of the device, which may be null in rare
@@ -119,17 +137,26 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
                         Location mLastKnownLocation = (Location)task.getResult();
                         mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(
                                 new LatLng(mLastKnownLocation.getLatitude(),
-                                        mLastKnownLocation.getLongitude()), DEFAULT_ZOOM));
-                    } else {
+                                        mLastKnownLocation.getLongitude()), 15));
+                        LatLng newLocation=new LatLng(mLastKnownLocation.getLatitude(),mLastKnownLocation.getLongitude());
+                        oLocation=newLocation;
+                        points.add(newLocation);
+                        setMarker(mLastKnownLocation);
+                     } else {
                         Log.d(TAG, "Current location is null. Using defaults.");
                         Log.e(TAG, "Exception: %s", task.getException());
                         mMap.getUiSettings().setMyLocationButtonEnabled(false);
-                    }
+                                          }
                 }
             });
         } catch(SecurityException e)  {
             Log.e("Exception: %s", e.getMessage());
         }
+    }
+    public void setMarker(Location location){
+        mMap.addMarker(new MarkerOptions()
+                .position(new LatLng(location.getLatitude(),location.getLongitude()))
+                .title("Activity"));
     }
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -154,6 +181,7 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
         navigationView.inflateMenu(R.menu.drawer_view);
         buildGoogleApiClient();
         initMap();
+        LocatedActivity.getInstance().addObserver(MapsActivity.this);
         GoogleSignInAccount acct = GoogleSignIn.getLastSignedInAccount(MapsActivity.this);
         if (acct != null) {
             personName = acct.getDisplayName();
@@ -163,6 +191,7 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
             personId = acct.getId();
             personPhoto = acct.getPhotoUrl();
         }
+
 
     }
 
@@ -392,6 +421,62 @@ public class MapsActivity extends AppCompatActivity implements OnMapReadyCallbac
     @Override
     public void onConnectionFailed(@NonNull ConnectionResult connectionResult) {
 
+    }
+
+    @Override
+    public void update(Observable o, Object obj) {
+        LocatedActivity la=new LocatedActivity();
+        currentLat=la.getLatitude();
+        currentLong=la.getLongitude();
+        currentActivity=la.getActivity();
+        LatLng Location=new LatLng(currentLat,currentLong);
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(
+                new LatLng(currentLat,currentLong), 15));
+        nLocation=Location;
+        points.add(Location);
+        if(currentActivity!=null)
+        {
+            drawPolyline();
+        }
+        Log.d("PraveenCheck",String.valueOf(Location.toString()+"-->"+currentActivity));
+    }
+    public void drawPolyline(){
+        int activityColor;
+        switch (currentActivity) {
+            case "DRIVING": {
+               activityColor =Color.BLUE;
+               break;
+            }
+            case "Riding BICYCLE": {
+                activityColor =Color.MAGENTA;break;
+            }
+            case "WALKING": {
+                activityColor =Color.BLACK;break;
+            }
+            case "RUNNING": {
+                activityColor =Color.CYAN;break;
+            }
+            case "STILL": {
+                activityColor =Color.GRAY;break;
+            }
+            case "Tilted": {
+                activityColor =Color.GREEN;break;
+            }
+            case "Walking": {
+                activityColor =Color.RED;break;
+            }
+            case "NOT FOUND":{
+                activityColor =Color.YELLOW;break;
+            }
+            default:
+                activityColor=Color.RED;
+        }
+        Polyline line = mMap.addPolyline(new PolylineOptions()
+                .add(oLocation,nLocation)
+                .width(10)
+                .color(activityColor));
+        oLocation=nLocation;
+        Toast.makeText(this, currentActivity, Toast.LENGTH_SHORT).show();
     }
 }
 

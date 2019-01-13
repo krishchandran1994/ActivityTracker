@@ -11,6 +11,7 @@ import android.graphics.Color;
 import android.location.Location;
 import android.preference.PreferenceManager;
 
+import com.acitivitytracker.kchan.activitytracker.ViewModel.LocatedActivity;
 import com.google.android.gms.location.DetectedActivity;
 
 import java.text.DateFormat;
@@ -23,23 +24,42 @@ public class ResultHelper {
 
     final private static String PRIMARY_CHANNEL = "default";
 
+    private String activityname;
 
+    private static ResultHelper rhInstance;
+
+    public  static ResultHelper getRhInstance() {
+        return rhInstance;
+    }
+
+
+    public void setLocationstring(String locationstring) {
+        this.locationstring = locationstring;
+    }
+
+    private String locationstring;
     private Context mContext;
     private List<Location> mLocations;
+
+
+    public String getActivityname() {
+        return activityname;
+    }
+
+    public String getLocationstring() {
+        return locationstring;
+    }
+
+    public ResultHelper() {
+    }
+
     private NotificationManager mNotificationManager;
 
-    public ResultHelper(Context context, List<Location> locations) {
-        mContext = context;
-        mLocations = locations;
-
-        NotificationChannel channel = new NotificationChannel(PRIMARY_CHANNEL,
-                context.getString(R.string.default_channel), NotificationManager.IMPORTANCE_DEFAULT);
-        channel.setLightColor(Color.GREEN);
-        channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
-        getNotificationManager().createNotificationChannel(channel);
+    public static void init(Context context){
+        rhInstance = new ResultHelper(context);
     }
 
-    public ResultHelper(Context context) {
+    private ResultHelper(Context context) {
         mContext = context;
 
         NotificationChannel channel = new NotificationChannel(PRIMARY_CHANNEL,
@@ -48,20 +68,20 @@ public class ResultHelper {
         channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
         getNotificationManager().createNotificationChannel(channel);
     }
-
     /**
      * Returns the title for reporting about a list of {@link Location} objects.
      */
-    private String getLocationResultTitle() {
+    public String getLocationResultTitle() {
         String numLocationsReported = mContext.getResources().getQuantityString(
                 R.plurals.num_locations_reported, mLocations.size(), mLocations.size());
         return numLocationsReported + ": " + DateFormat.getDateTimeInstance().format(new Date());
     }
 
-    private String getLocationResultText() {
+    public String getLocationResultText() {
         if (mLocations.isEmpty()) {
             return mContext.getString(R.string.unknown_location);
         }
+
         StringBuilder sb = new StringBuilder();
         for (Location location : mLocations) {
             sb.append("(");
@@ -72,12 +92,14 @@ public class ResultHelper {
             sb.append("\n");
         }
         return sb.toString();
+
     }
 
     /**
      * Saves location result as a string to {@link android.content.SharedPreferences}.
      */
     public void saveResults() {
+
         PreferenceManager.getDefaultSharedPreferences(mContext)
                 .edit()
                 .putString(KEY_LOCATION_UPDATES_RESULT, getLocationResultTitle() + "\n" +
@@ -111,7 +133,8 @@ public class ResultHelper {
     /**
      * Displays a notification with the location results.
      */
-    public void showNotification() {
+    public void showNotification(List<Location> locations) {
+        this.mLocations = locations;
         Intent notificationIntent = new Intent(mContext, MapsActivity.class);
 
         // Construct a task stack.
@@ -126,7 +149,9 @@ public class ResultHelper {
         // Get a PendingIntent containing the entire back stack.
         PendingIntent notificationPendingIntent =
                 stackBuilder.getPendingIntent(0, PendingIntent.FLAG_UPDATE_CURRENT);
-
+        setLocationstring(getLocationResultText());
+        setValues();
+        LocatedActivity.getInstance().updateValue(locationstring);
         Notification.Builder notificationBuilder = new Notification.Builder(mContext,
                 PRIMARY_CHANNEL)
                 .setContentTitle(getLocationResultTitle())
@@ -138,36 +163,23 @@ public class ResultHelper {
         getNotificationManager().notify(0, notificationBuilder.build());
     }
 
+    public void setActivityname(String activityname) {
+        this.activityname = activityname;
+    }
+    public void setValues(){
+        LocatedActivity la=new LocatedActivity();
+        la.setActivity(getActivityname());
+        la.setLatitude(mLocations.get(0).getLatitude());
+        la.setLongitude(mLocations.get(0).getLongitude());
+    }
     public void showNotificationActivity(int update, int confidence) {
-        if(confidence > 20){
-            Intent notificationIntent = new Intent(mContext, MapsActivity.class);
-
-            // Construct a task stack.
-            TaskStackBuilder stackBuilder = TaskStackBuilder.create(mContext);
-
-            // Add the main Activity to the task stack as the parent.
-            stackBuilder.addParentStack(MapsActivity.class);
-
-            // Push the content Intent onto the stack.
-            stackBuilder.addNextIntent(notificationIntent);
-
-            // Get a PendingIntent containing the entire back stack.
-            PendingIntent notificationPendingIntent =
-                    stackBuilder.getPendingIntent(1, PendingIntent.FLAG_UPDATE_CURRENT);
-
-            Notification.Builder notificationBuilder = new Notification.Builder(mContext,
-                    PRIMARY_CHANNEL)
-                    .setContentTitle("Activity Recognition On")
-                    .setContentText(getActivity(update))
-                    .setSmallIcon(R.mipmap.ic_launcher)
-                    .setAutoCancel(true)
-                    .setContentIntent(notificationPendingIntent);
-
-            getNotificationManager().notify(1, notificationBuilder.build());
+        if(confidence > 60){
+            setActivityname(getActivity(update));
+            setValues();
         }
     }
 
-    private String getActivity(int update) {
+    public String getActivity(int update) {
         switch (update) {
             case DetectedActivity.IN_VEHICLE: {
                 return "DRIVING";
