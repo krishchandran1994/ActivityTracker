@@ -14,7 +14,6 @@ android {
             storeFile file('/trial.jks')
             storePassword 'spck1994'
         }
-
     }
     compileSdkVersion 28
     defaultConfig {
