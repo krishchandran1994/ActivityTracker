@@ -46,5 +46,4 @@ public class LocationUpdateBroadcastReceiver extends BroadcastReceiver {
             }
         }
     }
-
 }
